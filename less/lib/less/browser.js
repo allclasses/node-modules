@@ -14,17 +14,19 @@ less.env = less.env || (location.hostname == '127.0.0.1' ||
                                                          : 'production');
 
 var logLevel = {
+    debug: 3,
     info: 2,
     errors: 1,
     none: 0
 };
 
 // The amount of logging in the javascript console.
+// 3 - Debug, information and errors
 // 2 - Information and errors
 // 1 - Errors
 // 0 - None
 // Defaults to 2
-less.logLevel = typeof(less.logLevel) != 'undefined' ? less.logLevel : logLevel.info;
+less.logLevel = typeof(less.logLevel) != 'undefined' ? less.logLevel : (less.env === 'development' ?  logLevel.debug : logLevel.errors);
 
 // Load styles asynchronously (default: false)
 //
@@ -41,7 +43,9 @@ less.poll = less.poll || (isFileProtocol ? 1000 : 1500);
 //Setup user functions
 if (less.functions) {
     for(var func in less.functions) {
-        less.tree.functions[func] = less.functions[func];
+        if (less.functions.hasOwnProperty(func)) {
+            less.tree.functions[func] = less.functions[func];
+        }
    }
 }
 
@@ -53,10 +57,9 @@ if (dumpLineNumbers) {
 var typePattern = /^text\/(x-)?less$/;
 var cache = null;
 var fileCache = {};
-var varsPre = "";
 
 function log(str, level) {
-    if (less.env == 'development' && typeof(console) !== 'undefined' && less.logLevel >= level) {
+    if (typeof(console) !== 'undefined' && less.logLevel >= level) {
         console.log('less: ' + str);
     }
 }
@@ -156,6 +159,13 @@ function createCSS(styles, sheet, lastModified) {
             log('failed to save', logLevel.errors);
         }
     }
+}
+
+function postProcessCSS(styles) {
+    if (less.postProcessor && typeof less.postProcessor === 'function') {
+        styles = less.postProcessor.call(styles, styles) || styles;
+    }
+    return styles;
 }
 
 function errorHTML(e, rootHref) {
@@ -287,7 +297,7 @@ function removeError(path) {
     }
 }
 
-function loadStyles(newVars) {
+function loadStyles(modifyVars) {
     var styles = document.getElementsByTagName('style'),
         style;
     for (var i = 0; i < styles.length; i++) {
@@ -297,14 +307,8 @@ function loadStyles(newVars) {
                 lessText = style.innerHTML || '';
             env.filename = document.location.href.replace(/#.*$/, '');
 
-            if (newVars || varsPre) {
+            if (modifyVars || less.globalVars) {
                 env.useFileCache = true;
-
-                lessText = varsPre + lessText;
-
-                if (newVars) {
-                    lessText += "\n" + newVars;
-                }
             }
 
             /*jshint loopfunc:true */
@@ -323,7 +327,7 @@ function loadStyles(newVars) {
                     }
                 };
             })(style);
-            new(less.Parser)(env).parse(lessText, callback);
+            new(less.Parser)(env).parse(lessText, callback, {globalVars: less.globalVars, modifyVars: modifyVars});
         }
     }
 }
@@ -407,12 +411,12 @@ function pathDiff(url, baseUrl) {
 }
 
 function getXMLHttpRequest() {
-    if (window.XMLHttpRequest) {
+    if (window.XMLHttpRequest && (window.location.protocol !== "file:" || !window.ActiveXObject)) {
         return new XMLHttpRequest();
     } else {
         try {
             /*global ActiveXObject */
-            return new ActiveXObject("MSXML2.XMLHTTP.3.0");
+            return new ActiveXObject("Microsoft.XMLHTTP");
         } catch (e) {
             log("browser doesn't support AJAX.", logLevel.errors);
             return null;
@@ -427,7 +431,7 @@ function doXHR(url, type, callback, errback) {
     if (typeof(xhr.overrideMimeType) === 'function') {
         xhr.overrideMimeType('text/css');
     }
-    log("XHR: Getting '" + url + "'", logLevel.info);
+    log("XHR: Getting '" + url + "'", logLevel.debug);
     xhr.open('GET', url, async);
     xhr.setRequestHeader('Accept', type || 'text/x-less, text/css; q=0.9, */*; q=0.5');
     xhr.send(null);
@@ -458,7 +462,7 @@ function doXHR(url, type, callback, errback) {
     }
 }
 
-function loadFile(originalHref, currentFileInfo, callback, env, newVars) {
+function loadFile(originalHref, currentFileInfo, callback, env, modifyVars) {
 
     if (currentFileInfo && currentFileInfo.currentDirectory && !/^([a-z-]+:)?\//.test(originalHref)) {
         originalHref = currentFileInfo.currentDirectory + originalHref;
@@ -496,9 +500,6 @@ function loadFile(originalHref, currentFileInfo, callback, env, newVars) {
     if (env.useFileCache && fileCache[href]) {
         try {
             var lessText = fileCache[href];
-            if (newVars) {
-                lessText += "\n" + newVars;
-            }
             callback(null, lessText, href, newFileInfo, { lastModified: new Date() });
         } catch (e) {
             callback(e, null, href);
@@ -507,8 +508,6 @@ function loadFile(originalHref, currentFileInfo, callback, env, newVars) {
     }
 
     doXHR(href, env.mime, function (data, lastModified) {
-        data = varsPre + data;
-
         // per file cache
         fileCache[href] = data;
 
@@ -523,12 +522,12 @@ function loadFile(originalHref, currentFileInfo, callback, env, newVars) {
     });
 }
 
-function loadStyleSheet(sheet, callback, reload, remaining, newVars) {
+function loadStyleSheet(sheet, callback, reload, remaining, modifyVars) {
 
     var env = new less.tree.parseEnv(less);
     env.mime = sheet.type;
 
-    if (newVars || varsPre) {
+    if (modifyVars || less.globalVars) {
         env.useFileCache = true;
     }
 
@@ -563,16 +562,16 @@ function loadStyleSheet(sheet, callback, reload, remaining, newVars) {
                 } catch (e) {
                     callback(e, null, null, sheet);
                 }
-            });
+            }, {modifyVars: modifyVars, globalVars: less.globalVars});
         } else {
             callback(e, null, null, sheet, webInfo, path);
         }
-    }, env, newVars);
+    }, env, modifyVars);
 }
 
-function loadStyleSheets(callback, reload, newVars) {
+function loadStyleSheets(callback, reload, modifyVars) {
     for (var i = 0; i < less.sheets.length; i++) {
-        loadStyleSheet(less.sheets[i], callback, reload, less.sheets.length - (i + 1), newVars);
+        loadStyleSheet(less.sheets[i], callback, reload, less.sheets.length - (i + 1), modifyVars);
     }
 }
 
@@ -585,7 +584,9 @@ function initRunningMode(){
                     if (e) {
                         error(e, sheet.href);
                     } else if (root) {
-                        createCSS(root.toCSS(less), sheet, env.lastModified);
+                        var styles = root.toCSS(less);
+                        styles = postProcessCSS(styles);
+                        createCSS(styles, sheet, env.lastModified);
                     }
                 });
             }
@@ -595,16 +596,6 @@ function initRunningMode(){
     }
 }
 
-function serializeVars(vars) {
-    var s = "";
-
-    for (var name in vars) {
-        s += ((name.slice(0,1) === '@')? '' : '@') + name +': '+
-                ((vars[name].slice(-1) === ';')? vars[name] : vars[name] +';');
-    }
-
-    return s;
-}
 
 
 //
@@ -615,10 +606,11 @@ less.watch   = function () {
         less.env = 'development';
          initRunningMode();
     }
-    return this.watchMode = true;
+    this.watchMode = true;
+    return true;
 };
 
-less.unwatch = function () {clearInterval(less.watchTimer); return this.watchMode = false; };
+less.unwatch = function () {clearInterval(less.watchTimer); this.watchMode = false; return false; };
 
 if (/!watch/.test(location.hash)) {
     less.watch();
@@ -649,10 +641,10 @@ for (var i = 0; i < links.length; i++) {
 // CSS without reloading less-files
 //
 less.modifyVars = function(record) {
-    less.refresh(false, serializeVars(record));
+    less.refresh(false, record);
 };
 
-less.refresh = function (reload, newVars) {
+less.refresh = function (reload, modifyVars) {
     var startTime, endTime;
     startTime = endTime = new Date();
 
@@ -663,22 +655,20 @@ less.refresh = function (reload, newVars) {
         if (env.local) {
             log("loading " + sheet.href + " from cache.", logLevel.info);
         } else {
-            log("parsed " + sheet.href + " successfully.", logLevel.info);
-            createCSS(root.toCSS(less), sheet, env.lastModified);
+            log("parsed " + sheet.href + " successfully.", logLevel.debug);
+            var styles = root.toCSS(less);
+            styles = postProcessCSS(styles);
+            createCSS(styles, sheet, env.lastModified);
         }
         log("css for " + sheet.href + " generated in " + (new Date() - endTime) + 'ms', logLevel.info);
         if (env.remaining === 0) {
-            log("css generated in " + (new Date() - startTime) + 'ms', logLevel.info);
+            log("less has finished. css generated in " + (new Date() - startTime) + 'ms', logLevel.info);
         }
         endTime = new Date();
-    }, reload, newVars);
+    }, reload, modifyVars);
 
-    loadStyles(newVars);
+    loadStyles(modifyVars);
 };
-
-if (less.globalVars) {
-    varsPre = serializeVars(less.globalVars) + "\n";
-}
 
 less.refreshStyles = loadStyles;
 
