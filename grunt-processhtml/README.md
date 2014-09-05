@@ -37,6 +37,8 @@ This is optional.
 
 Is the target name of your grunt task, for example: `dist`. Is supported for all types, so you can always specify the target if needed.
 
+You can pass multiple comma-separated targets, e.g. `<!-- build:remove:dist,dev,prod -->` and block will be parsed for each.
+
 ##### value
 Required for types: `js`, `css`, `include` and `[attr]`.
 
@@ -46,11 +48,11 @@ Could be a file name: `script.min.js` or a path if an attribute like `[src]` is 
 
 ### Simple examples
 
-##### `build:js[:target] <value>`
+##### `build:js[:targets] <value>`
 
 Replace many script tags into one.
 
-`[:target]` Optional build target.
+`[:targets]` Optional build targets.
 
 `<value>` Required value: A file path.
 
@@ -64,11 +66,11 @@ Replace many script tags into one.
 <script src="app.min.js"></script>
 ```
 
-##### `build:css[:target] <value>`
+##### `build:css[:targets] <value>`
 
 Replace many stylesheet link tags into one.
 
-`[:target]` Optional build target.
+`[:targets]` Optional build targets.
 
 `<value>` Required value: A file path.
 
@@ -82,13 +84,13 @@ Replace many stylesheet link tags into one.
 <link rel="stylesheet" href="style.min.css">
 ```
 
-##### `build:<[attr]>[:target] <value>`
+##### `build:<[attr]>[:targets] <value>`
 
 Change the value of an attribute. In most cases using `[src]` and `[href]` will be enough but it works with any html attribute.
 
 `<[attr]>` Required html attribute, i.e. `[src]`, `[href]`.
 
-`[:target]` Optional build target.
+`[:targets]` Optional build targets.
 
 `<value>` Required value: A path or a file path.
 
@@ -122,11 +124,11 @@ Change the value of an attribute. In most cases using `[src]` and `[href]` will 
 
 ```
 
-##### `build:include[:target] <value>`
+##### `build:include[:targets] <value>`
 
 Include an external file.
 
-`[:target]` Optional build target.
+`[:targets]` Optional build targets.
 
 `<value>` Required value: A file path.
 
@@ -136,7 +138,7 @@ This will be replaced by the content of header.html
 <!-- /build -->
 
 <!-- build:include:dev dev/content.html -->
-This will be replaced by the content of dev/header.html
+This will be replaced by the content of dev/content.html
 <!-- /build -->
 
 <!-- build:include:dist dist/content.html -->
@@ -144,11 +146,11 @@ This will be replaced by the content of dist/content.html
 <!-- /build -->
 ```
 
-##### `build:template[:target]`
+##### `build:template[:targets]`
 
 Process a template block with a data object inside [options.data](#optionsdata).
 
-`[:target]` Optional build target.
+`[:targets]` Optional build targets.
 
 
 ```html
@@ -162,11 +164,11 @@ to prevent breaking the html file and keeping it functional
 -->
 ```
 
-##### `build:remove[:target]`
+##### `build:remove[:targets]`
 
 Remove a block.
 
-`[:target]` Optional build target
+`[:targets]` Optional build targets
 
 ```html
 <!-- build:remove -->
@@ -229,6 +231,48 @@ templateSettings: {
   opener: '{{',
   closer: '}}'
 }
+```
+
+#### options.includeBase
+Type: `String`
+Default value: `null` (Will use the path of the including file)
+
+Specify an optional path to look for include files. ie, `app/assets/includes/`
+
+#### options.commentMarker
+Type: `String`
+Default value: `build`
+
+Specify the word used to indicate the special begin/end comments.  This is useful if you want to use this plugin
+in conjuction with other plugins that use a similar, conflicting `build:<type>` comment
+(such as [grunt-usemin](https://github.com/yeoman/grunt-usemin)).
+
+With `options.commentMarker` set to `process`, a typical comment would look like:
+
+```html
+<!-- process:<type>[:targets] [value] -->
+...
+<!-- /process -->
+```
+
+#### options.strip
+Type: `Boolean`
+Default value: `null`
+
+Specifying `true` will strip comments which do not match the current target:
+
+```javascript
+strip: true
+```
+
+#### options.recursive
+Type: `Boolean`
+Default value: `false`
+
+Recursively process files that are being included using `build:include`.
+
+```javascript
+recursive: true
 ```
 
 ### Usage Examples
@@ -407,6 +451,11 @@ The `custom.html` to be processed:
 In lieu of a formal styleguide, take care to maintain the existing coding style. Add unit tests for any new or changed functionality. Lint and test your code using [Grunt](http://gruntjs.com/).
 
 ## Release History
+- 0.2.9 Added `recursive` option
+- 0.2.8 Changed `include` to not use `replace()`
+- 0.2.7 Added `commentMarker` option
+- 0.2.6 Fix #14 and added grunt-release
+- 0.2.5 Create first tag using grunt-release
 - 0.2.3 Fix #8
 - 0.2.2 Small code refactor
 - 0.2.1 Added `templateSettings` option tu customize template delimiters
